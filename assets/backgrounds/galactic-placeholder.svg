@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <radialGradient id="space" cx="72%" cy="28%" r="90%">
+      <stop offset="0%" stop-color="#303267"/>
+      <stop offset="24%" stop-color="#171934"/>
+      <stop offset="62%" stop-color="#090b17"/>
+      <stop offset="100%" stop-color="#03040a"/>
+    </radialGradient>
+
+    <radialGradient id="nebula" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#7857d9" stop-opacity="0.42"/>
+      <stop offset="45%" stop-color="#315c9c" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#11152a" stop-opacity="0"/>
+    </radialGradient>
+
+    <filter id="blur">
+      <feGaussianBlur stdDeviation="70"/>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#space)"/>
+  <ellipse cx="1330" cy="320" rx="620" ry="270"
+           fill="url(#nebula)"
+           filter="url(#blur)"
+           transform="rotate(-18 1330 320)"/>
+
+  <g fill="#ffffff">
+    <circle cx="110" cy="130" r="1.2" opacity=".65"/>
+    <circle cx="260" cy="420" r=".9" opacity=".45"/>
+    <circle cx="410" cy="180" r="1.1" opacity=".75"/>
+    <circle cx="570" cy="690" r=".8" opacity=".5"/>
+    <circle cx="730" cy="250" r="1.3" opacity=".7"/>
+    <circle cx="940" cy="540" r=".8" opacity=".45"/>
+    <circle cx="1120" cy="120" r="1.4" opacity=".8"/>
+    <circle cx="1290" cy="730" r=".9" opacity=".5"/>
+    <circle cx="1480" cy="190" r="1.1" opacity=".7"/>
+    <circle cx="1660" cy="610" r="1.3" opacity=".65"/>
+    <circle cx="1810" cy="350" r=".8" opacity=".45"/>
+  </g>
+</svg>

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Termi
+GenericName=Terminal Emulator
+Comment=Native galactic terminal built with Rust and Slint
+Exec=termi
+TryExec=termi
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;commandline;terminal;
+StartupNotify=true
+StartupWMClass=Termi

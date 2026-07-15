@@ -1,0 +1,483 @@
+export struct TerminalCell {
+    row: int,
+    column: int,
+    text: string,
+    foreground: color,
+    background: color,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    cursor: bool,
+    selected: bool,
+    wide: bool,
+}
+
+export struct TabData {
+    id: int,
+    title: string,
+    active: bool,
+    exited: bool,
+}
+
+component TrafficLight inherits Rectangle {
+    in property <color> normal-color;
+    in property <color> hover-color;
+    in property <string> symbol;
+    callback activated;
+
+    width: 13px;
+    height: 13px;
+    border-radius: 7px;
+    background: hit.has-hover ? root.hover-color : root.normal-color;
+    border-width: 1px;
+    border-color: #00000055;
+
+    Text {
+        text: hit.has-hover ? root.symbol : "";
+        color: #17191f9a;
+        font-size: 9px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    hit := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+component ToolbarIcon inherits Rectangle {
+    in property <string> glyph;
+    callback activated;
+
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    background: hit.pressed ? #44517556 : hit.has-hover ? #313b513d : transparent;
+
+    Text {
+        text: root.glyph;
+        color: #d7d9e6;
+        font-size: 17px;
+        font-weight: 600;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    hit := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
+export component AppWindow inherits Window {
+    title: "Termi";
+    preferred-width: 1240px;
+    preferred-height: 780px;
+    min-width: 760px;
+    min-height: 480px;
+    no-frame: true;
+    resize-border-width: 7px;
+    background: #05060a;
+    default-font-family: "Inter";
+    forward-focus: terminal-focus;
+
+    in property <[TerminalCell]> terminal-cells;
+    in property <[TabData]> tabs;
+    in-out property <int> active-tab-index: 0;
+    in property <int> terminal-columns: 80;
+    in property <int> terminal-rows: 24;
+    in property <string> current-directory: "/home/josh";
+    in property <string> shell-name: "bash";
+    in property <string> terminal-font-family: "DejaVu Sans Mono";
+    in property <float> terminal-font-size: 16;
+    in property <float> terminal-cell-width: 9.64;
+    in property <float> terminal-cell-height: 20;
+    in-out property <bool> bell-active: false;
+    in property <color> background-overlay: #03070e78;
+    in property <color> terminal-surface: #0a0b10c7;
+
+    out property <float> terminal-viewport-width: terminal-focus.width / 1px;
+    out property <float> terminal-viewport-height: terminal-focus.height / 1px;
+
+    callback start-window-drag;
+    callback new-tab;
+    callback close-tab(int);
+    callback activate-tab(int);
+    callback close-active-tab;
+    callback terminal-key(string, bool, bool, bool, bool);
+    callback terminal-scroll(float);
+    callback terminal-pointer(float, float, int);
+    callback copy-request;
+    callback paste-request;
+    callback open-menu;
+
+    private property <bool> cursor-phase: true;
+
+    Timer {
+        interval: 530ms;
+        running: true;
+        triggered => { root.cursor-phase = !root.cursor-phase; }
+    }
+
+    Timer {
+        interval: 150ms;
+        running: root.bell-active;
+        triggered => { root.bell-active = false; }
+    }
+
+    Image {
+        source: @image-url("../assets/backgrounds/galactic.webp");
+        width: 100%;
+        height: 100%;
+        image-fit: cover;
+        image-rendering: smooth;
+    }
+
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: root.background-overlay;
+    }
+
+    VerticalLayout {
+        width: 100%;
+        height: 100%;
+        spacing: 0px;
+
+        title-bar := Rectangle {
+            height: 38px;
+            background: #0a0b12d4;
+            border-width: 0px;
+
+            title-drag := TouchArea {
+                width: 100%;
+                height: 100%;
+                pointer-event(event) => {
+                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                        root.start-window-drag();
+                    }
+                }
+                double-clicked => { root.maximized = !root.maximized; }
+            }
+
+            Text {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 100%;
+                text: "Termi";
+                color: #e5e6ed;
+                font-size: 13px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            HorizontalLayout {
+                x: 16px;
+                y: 0px;
+                width: 55px;
+                height: 100%;
+                spacing: 8px;
+                alignment: center;
+
+                TrafficLight {
+                    normal-color: #ff5f57;
+                    hover-color: #ff7770;
+                    symbol: "×";
+                    activated => { root.close(); }
+                }
+                TrafficLight {
+                    normal-color: #febc2e;
+                    hover-color: #ffd15c;
+                    symbol: "−";
+                    activated => { root.minimized = true; }
+                }
+                TrafficLight {
+                    normal-color: #28c840;
+                    hover-color: #50dc63;
+                    symbol: root.maximized ? "−" : "+";
+                    activated => { root.maximized = !root.maximized; }
+                }
+            }
+        }
+
+        toolbar := Rectangle {
+            height: 54px;
+            background: #0a0b12c7;
+            border-width: 1px;
+            border-color: #2630414d;
+
+            HorizontalLayout {
+                x: 14px;
+                y: 8px;
+                width: parent.width - 28px;
+                height: 38px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "TERMI";
+                    color: #f0f1f8;
+                    font-size: 13px;
+                    font-weight: 800;
+                    letter-spacing: 0.5px;
+                    vertical-alignment: center;
+                }
+
+                Rectangle {
+                    width: 1px;
+                    height: 22px;
+                    background: #4a536677;
+                }
+
+                for tab[index] in root.tabs : Rectangle {
+                    width: min(230px, max(150px, (parent.width - 360px) / max(1, root.tabs.length)));
+                    height: 36px;
+                    border-radius: 10px;
+                    background: tab.active ? #2a2939db : tab-hit.has-hover ? #31324269 : #282a3433;
+                    border-width: 1px;
+                    border-color: tab.active ? #687591aa : #323a4b66;
+
+                    tab-hit := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.activate-tab(index); terminal-focus.focus(); }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 6px;
+                        spacing: 8px;
+
+                        Rectangle {
+                            width: 7px;
+                            height: 7px;
+                            border-radius: 4px;
+                            background: tab.exited ? #ff6b64 : tab.active ? #7ac7ff : #687083;
+                            vertical-stretch: 0;
+                        }
+
+                        Text {
+                            text: tab.title;
+                            color: tab.active ? #f0f1f8 : #b6bbc9;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            horizontal-stretch: 1;
+                        }
+
+                        Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            border-radius: 7px;
+                            background: close-hit.has-hover ? #4a526b5c : transparent;
+
+                            Text {
+                                text: "×";
+                                color: #bdc1cf;
+                                font-size: 13px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            close-hit := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.close-tab(index); }
+                            }
+                        }
+                    }
+                }
+
+                ToolbarIcon {
+                    glyph: "+";
+                    activated => { root.new-tab(); }
+                }
+
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                Text {
+                    text: root.current-directory;
+                    color: #9da4b7;
+                    font-size: 11px;
+                    overflow: elide;
+                    vertical-alignment: center;
+                    max-width: 280px;
+                }
+
+                ToolbarIcon {
+                    glyph: "•••";
+                    activated => { root.open-menu(); }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+            background: transparent;
+
+            terminal-card := Rectangle {
+                x: 14px;
+                y: 12px;
+                width: parent.width - 28px;
+                height: parent.height - 20px;
+                border-radius: 17px;
+                background: root.terminal-surface;
+                border-width: root.bell-active ? 2px : 1px;
+                border-color: root.bell-active ? #b993d6ff : #48536a99;
+                clip: true;
+
+                Rectangle {
+                    x: 1px;
+                    y: 1px;
+                    width: parent.width - 2px;
+                    height: 1px;
+                    background: #ffffff4c;
+                }
+
+                terminal-focus := FocusScope {
+                    x: 17px;
+                    y: 14px;
+                    width: parent.width - 34px;
+                    height: parent.height - 28px;
+                    focus-on-click: true;
+
+                    key-pressed(event) => {
+                        root.terminal-key(
+                            event.text,
+                            event.modifiers.control,
+                            event.modifiers.alt,
+                            event.modifiers.shift,
+                            event.modifiers.meta
+                        );
+                        accept
+                    }
+
+                    KeyBinding {
+                        keys: @keys(Control + Shift + T);
+                        activated => { root.new-tab(); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Shift + W);
+                        activated => { root.close-active-tab(); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Shift + C);
+                        activated => { root.copy-request(); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Shift + V);
+                        activated => { root.paste-request(); }
+                    }
+
+                    terminal-touch := TouchArea {
+                        width: 100%;
+                        height: 100%;
+                        mouse-cursor: text;
+
+                        pointer-event(event) => {
+                            if event.kind == PointerEventKind.down {
+                                terminal-focus.focus();
+
+                                if event.button == PointerEventButton.left {
+                                    root.terminal-pointer(
+                                        terminal-touch.mouse-x / 1px,
+                                        terminal-touch.mouse-y / 1px,
+                                        0
+                                    );
+                                } else if event.button == PointerEventButton.right {
+                                    root.paste-request();
+                                } else if event.button == PointerEventButton.middle {
+                                    root.paste-request();
+                                }
+                            } else if event.kind == PointerEventKind.up
+                                && event.button == PointerEventButton.left {
+                                root.terminal-pointer(
+                                    terminal-touch.mouse-x / 1px,
+                                    terminal-touch.mouse-y / 1px,
+                                    2
+                                );
+                            }
+                        }
+
+                        moved => {
+                            if terminal-touch.pressed {
+                                root.terminal-pointer(
+                                    terminal-touch.mouse-x / 1px,
+                                    terminal-touch.mouse-y / 1px,
+                                    1
+                                );
+                            }
+                        }
+
+                        scroll-event(event) => {
+                            root.terminal-scroll(event.delta-y / 1px);
+                            accept
+                        }
+                    }
+
+                    for cell in root.terminal-cells : Rectangle {
+                        x: cell.column * root.terminal-cell-width * 1px;
+                        y: cell.row * root.terminal-cell-height * 1px;
+                        width: (cell.wide ? 2 : 1) * root.terminal-cell-width * 1px;
+                        height: root.terminal-cell-height * 1px;
+                        background: cell.cursor && root.cursor-phase
+                            ? #eef2fb
+                            : cell.selected
+                                ? #537db8cc
+                                : cell.background;
+
+                        Text {
+                            x: 0px;
+                            y: 0px;
+                            width: parent.width;
+                            height: parent.height;
+                            text: cell.text;
+                            color: cell.cursor && root.cursor-phase
+                                ? #10131a
+                                : cell.foreground;
+                            font-family: root.terminal-font-family;
+                            font-size: root.terminal-font-size * 1px;
+                            font-weight: cell.bold ? 700 : 400;
+                            font-italic: cell.italic;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                            overflow: clip;
+                        }
+
+                        if cell.underline : Rectangle {
+                            x: 0px;
+                            y: parent.height - 2px;
+                            width: parent.width;
+                            height: 1px;
+                            background: cell.foreground;
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            height: 30px;
+            background: #0a0b11d2;
+
+            HorizontalLayout {
+                padding-left: 20px;
+                padding-right: 20px;
+                spacing: 15px;
+
+                Text { text: root.shell-name; color: #9ba3b6; font-size: 10px; vertical-alignment: center; }
+                Text { text: "UTF-8"; color: #9ba3b6; font-size: 10px; vertical-alignment: center; }
+                Text { text: "xterm-256color"; color: #9ba3b6; font-size: 10px; vertical-alignment: center; }
+                Rectangle { horizontal-stretch: 1; background: transparent; }
+                Text {
+                    text: root.terminal-columns + " × " + root.terminal-rows;
+                    color: #9ba3b6;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}
