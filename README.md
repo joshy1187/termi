@@ -1,96 +1,130 @@
 # Termi
 
-Termi is a native Linux terminal workbench written in Rust with a Slint interface. This package replaces the visual prototype with a real pseudo-terminal, terminal parser, multi-tab controller, keyboard input, scrollback, selection, clipboard support, dynamic resizing, shell title/current-directory tracking, and a frameless galactic interface.
+Termi 1.0 is a native Linux terminal emulator written in Rust with a Slint
+interface. It targets Ubuntu 24.04 on x86_64 and provides a real PTY per tab,
+ANSI/256-color/true-color rendering, Unicode and wide cells, alternate-screen
+applications, scrollback search, clipboard integration, and xterm-style mouse
+reporting.
 
-## What this package delivers
+> **Status:** 1.0 release candidate. The automated source and package gates are
+> in place; the Wayland/X11 manual matrix in [docs/TESTING.md](docs/TESTING.md)
+> remains the final release sign-off for each tagged build.
 
-- A real Linux PTY for every tab.
-- Bash, Zsh, Fish, or another configured shell.
-- ANSI 16-color, 256-color, and true-color rendering.
-- Unicode and wide-character cell rendering.
-- Alternate screen support through the terminal parser.
-- Application cursor mode and bracketed paste.
-- 10,000-line configurable scrollback.
-- Mouse text selection and `Ctrl+Shift+C` / `Ctrl+Shift+V`.
-- Multiple independent tabs with process cleanup.
-- PTY resize propagation when the Termi window changes size.
-- Shell-provided tab titles and OSC 7 current-directory tracking.
-- Frameless window dragging, double-click maximize, resize borders, and left-side traffic-light controls.
-- User-controlled font, sizing, background dimming, and terminal translucency through TOML.
-- Desktop launcher and local installation scripts.
+## Supported production target
 
-## Important boundary
+- Ubuntu 24.04 LTS
+- x86_64 (`amd64`)
+- Wayland or X11 desktop session
+- Bash, Zsh, Fish, or another executable configured by absolute path
 
-This is the first production-oriented vertical slice, not a claim of complete parity with mature terminals such as Alacritty or WezTerm. The architecture is real and usable, but these still belong in later milestones: split panes, a settings surface, searchable scrollback, hyperlink activation, image protocols, complete xterm mouse reporting, ligatures, GPU-batched glyph rendering, session persistence, and exhaustive terminal conformance testing.
+ARM, Flatpak, split panes, session restoration, terminal image protocols,
+ligatures, and clickable hyperlinks are outside the 1.0 support boundary.
 
-The PTY/parser boundary is isolated under `src/terminal`, so the engine can later be replaced or expanded without rewriting the Slint application shell.
+## Install a release
 
-## Install over the current prototype
+GitHub Releases publish three artifacts plus `SHA256SUMS`:
 
-The installer preserves your existing file at:
+- `termi_1.0.0_amd64.deb`
+- `termi-1.0.0-x86_64.AppImage`
+- `termi-1.0.0-x86_64-unknown-linux-gnu.tar.gz`
 
-```text
-/home/josh/termi/assets/backgrounds/galactic.png
-```
-
-Extract this package somewhere other than `/home/josh/termi`, then run:
+Verify a download, then install the Debian package:
 
 ```bash
-cd termi-production-foundation
-chmod +x install-into-termi.sh
-./install-into-termi.sh /home/josh/termi
+sha256sum --ignore-missing --check SHA256SUMS
+sudo apt install ./termi_1.0.0_amd64.deb
+termi --version
 ```
 
-A timestamped backup of the current project is created beside it before files are replaced.
-
-Then build:
+The AppImage runs without a system package installation:
 
 ```bash
-cd /home/josh/termi
-cargo fmt
-cargo check
-cargo run
+chmod +x termi-1.0.0-x86_64.AppImage
+./termi-1.0.0-x86_64.AppImage --version
+./termi-1.0.0-x86_64.AppImage
 ```
 
-## Ubuntu dependencies
+The tarball is portable within the supported Ubuntu baseline. Its executable
+is under `bin/termi`; desktop and shell-integration files are under `share/`.
+
+## Build from source
+
+Termi declares Rust 1.92 as its minimum toolchain. Install the Ubuntu build
+dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y \
-  build-essential \
-  pkg-config \
-  cmake \
-  libfontconfig1-dev \
-  libfreetype6-dev \
-  libxkbcommon-dev \
-  libwayland-dev \
-  libx11-xcb-dev \
-  libxcb1-dev \
-  libxcb-render0-dev \
-  libxcb-shape0-dev \
-  libxcb-xfixes0-dev \
-  libssl-dev \
-  desktop-file-utils
+sudo apt install -y --no-install-recommends \
+  appstream build-essential cmake curl desktop-file-utils file jq \
+  libfontconfig1-dev libfreetype6-dev libssl-dev libwayland-dev libx11-xcb-dev \
+  libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
+  libxcb1-dev libxkbcommon-dev patchelf pkg-config
 ```
 
-Termi requires Rust 1.85 or newer because the project uses the Rust 2024 edition.
+Then validate and run:
+
+```bash
+rustup toolchain install 1.92.0 --component rustfmt,clippy
+rustup override set 1.92.0
+./scripts/check.sh
+cargo run --locked
+```
+
+Dependency policy is checked separately because `cargo-deny` is a development
+tool rather than an application dependency:
+
+```bash
+cargo install --locked cargo-deny
+cargo deny --locked check advisories sources
+```
+
+For a user-local installation:
+
+```bash
+./packaging/install-local.sh
+```
+
+The installer also updates an existing Termi shortcut on the XDG Desktop in
+place, preserving its desktop position while replacing legacy executable,
+window-class, and icon paths.
+
+To build and verify the exact release artifacts:
+
+```bash
+cargo install --locked --version 0.9.1 --features cli cargo-about
+cargo about generate --locked --fail \
+  --output-file THIRD_PARTY_NOTICES.html about.hbs
+./packaging/build-packages.sh 1.0.0
+./scripts/verify-packages.sh
+```
+
+The first package build downloads checksum-pinned linuxdeploy, AppImage output
+plugin, and x86-64 runtime files into ignored `target/` storage. Later builds
+reuse them only while their SHA-256 digests still match the pinned values.
 
 ## Configuration
 
-On first launch, Termi writes a configuration file under the normal Linux user configuration directory. On a typical Ubuntu installation this resolves to:
+Termi creates `~/.config/termi/config.toml` on first launch (or the equivalent
+path under `XDG_CONFIG_HOME`). Useful non-UI diagnostics are:
 
-```text
-~/.config/termi/config.toml
+```bash
+termi --print-config-path
+termi --check-config
+termi --version
 ```
 
 Default configuration:
 
+The first `shell` value follows an executable absolute `$SHELL` when available,
+then falls back to `/bin/bash` or `/bin/sh`. A typical Ubuntu file is:
+
 ```toml
+config_version = 1
 shell = "/bin/bash"
-font_family = "monospace"
-font_size = 14.0
-cell_width = 8.6
-cell_height = 18.0
+font_family = "DejaVu Sans Mono"
+font_size = 16.0
+cell_width = 9.64
+cell_height = 20.0
 scrollback_lines = 10000
 initial_columns = 100
 initial_rows = 32
@@ -98,76 +132,100 @@ background_dim = 0.48
 terminal_opacity = 0.78
 ```
 
-Restart Termi after changing the file.
+Configuration is size-limited, strictly parsed, validated before the window
+opens, and created atomically. Unknown keys are errors so misspellings do not
+silently change behavior. Restart Termi after editing it.
 
-For a crisper terminal grid, install a monospace font such as JetBrains Mono, Iosevka, or Cascadia Mono and set both the font family and matching cell dimensions. Cell dimensions are explicit because the current renderer lays terminal cells out deterministically rather than guessing font metrics.
+## Keyboard and pointer behavior
 
-## Shell integration
+| Input | Action |
+| --- | --- |
+| `Ctrl+Shift+T` | New tab (up to 32) |
+| `Ctrl+Shift+W` | Close active tab; closing the final tab exits |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+Shift+C` | Copy the selection, or the visible screen if none |
+| `Ctrl+Shift+V` | Paste; multiline or cleaned input requires confirmation |
+| `Ctrl+Shift+F` | Search scrollback |
+| Mouse wheel / touchpad | Scroll history |
+| `Shift` + pointer | Select text when an application has mouse capture |
+| Middle click | Paste when application mouse capture is off |
 
-The optional Bash integration updates the tab title and current directory using standard OSC escape sequences:
+Arrows, Home/End, Insert/Delete, Page Up/Down, F1–F12, modified function
+keys, normal text, Alt-prefixed text, and standard control characters are
+forwarded to the active PTY. Right click does not paste.
+
+## Terminal behavior and limits
+
+- PTY writes run through a bounded background queue, keeping the UI thread
+  responsive under slow consumers.
+- Clipboard access supports native Wayland data-control compositors and X11,
+  including XWayland fallback where available.
+- Paste input is limited to 1 MiB and pending input to 2 MiB.
+- OSC metadata strings are bounded before parsing.
+- Device attributes, status, cursor-position, and text-area-size queries receive
+  standard responses needed by common full-screen applications.
+- OSC 7 is display metadata only. New tabs use the child process's local
+  `/proc/<pid>/cwd`, never a remote shell-provided path.
+- Scrollback is configurable up to 100,000 lines; visible grid dimensions and
+  cell count are capped.
+
+## Optional Bash integration
 
 ```bash
 mkdir -p ~/.config/termi
 cp assets/shell/termi.bash ~/.config/termi/termi.bash
-printf '\n# Termi shell integration\n[[ -f ~/.config/termi/termi.bash ]] && source ~/.config/termi/termi.bash\n' >> ~/.bashrc
+printf '%s\n' \
+  '[[ -f ~/.config/termi/termi.bash ]] && source ~/.config/termi/termi.bash' \
+  >> ~/.bashrc
 ```
 
-Open a new Termi tab after enabling it.
+This emits standard title and current-directory metadata for display.
 
-## Keyboard shortcuts
+## Release process
 
-| Shortcut | Action |
-|---|---|
-| `Ctrl+Shift+T` | New tab |
-| `Ctrl+Shift+W` | Close active tab |
-| `Ctrl+Shift+C` | Copy selection; falls back to visible terminal text |
-| `Ctrl+Shift+V` | Paste with bracketed-paste support |
-| Mouse wheel / touchpad | Scroll terminal history |
-| Drag title bar | Move window |
-| Double-click title bar | Maximize or restore |
+Pull requests and pushes run format, check, tests, Clippy, a release build, CLI
+smoke tests, desktop-file validation, dependency advisory checks, and dependency
+source policy on Ubuntu 24.04 with Rust 1.92. GitHub Actions are pinned to
+immutable commits and Dependabot proposes dependency and action updates. Tags
+of the form `v1.0.0` must match `Cargo.toml`; the release workflow generates
+full license notices, builds the `.deb`, AppImage, and tarball, verifies all
+three, publishes SHA-256 checksums, and records GitHub build provenance
+attestations.
 
-Normal control sequences such as `Ctrl+C`, `Ctrl+D`, `Ctrl+L`, arrows, Home, End, Insert, Delete, Page Up/Down, and F1–F12 are forwarded to the active PTY.
-
-## Build and install locally
-
-```bash
-./scripts/check.sh
-./packaging/install-local.sh
-```
-
-The local installer places the release binary in `~/.local/bin/termi` and the desktop entry in `~/.local/share/applications`.
-
-## Project structure
-
-```text
-assets/backgrounds/    Galactic background and fallback
-assets/shell/          Optional shell integration
-packaging/             Desktop launcher and local installer
-scripts/               Development checks
-src/app.rs             Window/controller lifecycle and Slint callbacks
-src/config.rs          Persistent TOML configuration
-src/terminal/          PTY, parser, palette, keyboard translation
-ui/app-window.slint    Complete application surface
-```
+The application includes Slint's required `AboutSlint` attribution. Release
+artifacts include full third-party notices generated from `Cargo.lock`.
 
 ## Debugging
 
 ```bash
-RUST_LOG=termi=debug cargo run
+RUST_LOG=termi=debug cargo run --locked
+WINIT_UNIX_BACKEND=x11 cargo run --locked
 ```
 
-Wayland is preferred on modern Ubuntu. To compare X11 behavior:
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for ownership, worker, and
+lifecycle details.
 
-```bash
-WINIT_UNIX_BACKEND=x11 cargo run
-```
+## Project documentation
 
-## Current implementation notes
+- [Product specification](product.md) — supported contract, capabilities,
+  limits, performance design, and deferred scope.
+- [Architecture](docs/ARCHITECTURE.md) — process ownership, workers, protocol
+  support, rendering, and lock ordering.
+- [Testing](docs/TESTING.md) — automated gates plus the Wayland/X11 release
+  matrix.
+- [Releasing](docs/RELEASING.md) — versioning, artifact, tag, and publication
+  runbook.
+- [Changelog](CHANGELOG.md) — user-visible and security-relevant changes.
 
-- Each terminal tab owns an independent shell process and PTY.
-- PTY reads occur on named worker threads; Slint remains on its UI thread.
-- Shared terminal state is protected with `parking_lot` locks.
-- The 16 ms UI timer only rebuilds cell models when a session marks itself dirty.
-- Blank cells are omitted unless they carry a background, cursor, or selection, reducing Slint item count.
-- Closing a tab terminates its child process through a cloned PTY child killer.
-- The current renderer is a Slint cell renderer. A later performance milestone should move glyph batching to a custom renderer once functionality is stable.
+## Contributing and security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and follow
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) in project spaces. Report suspected
+vulnerabilities privately as described in [SECURITY.md](SECURITY.md); do not put
+security details or private terminal output in a public issue.
+
+## License
+
+Termi is available under the [MIT License](LICENSE). Release artifacts also
+include the third-party notices generated from the locked dependency graph; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for regeneration details.

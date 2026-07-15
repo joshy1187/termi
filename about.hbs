@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Termi third-party license notices</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+    h1, h2, h3 { line-height: 1.2; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 1rem; background: color-mix(in srgb, CanvasText 7%, Canvas); border-radius: .5rem; }
+    a { color: LinkText; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Termi third-party license notices</h1>
+    <p>This document contains license notices for Rust packages included in this Termi build.</p>
+    <h2>License overview</h2>
+    <ul>
+      {{#each overview}}
+      <li><a href="#{{id}}">{{name}}</a> ({{count}})</li>
+      {{/each}}
+    </ul>
+    <h2>License texts and packages</h2>
+    {{#each licenses}}
+      {{#if first_of_kind}}<h3 id="{{id}}">{{name}}</h3>{{/if}}
+      <p>Used by:</p>
+      <ul>
+        {{#each used_by}}
+        <li><a href="{{#if crate.repository}}{{crate.repository}}{{else}}https://crates.io/crates/{{crate.name}}{{/if}}">{{crate.name}} {{crate.version}}</a></li>
+        {{/each}}
+      </ul>
+      <pre>{{text}}</pre>
+    {{/each}}
+  </main>
+</body>
+</html>

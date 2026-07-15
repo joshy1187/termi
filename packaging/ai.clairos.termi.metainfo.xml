@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>ai.clairos.termi</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Termi</name>
+  <summary>Native multi-tab terminal emulator</summary>
+  <developer id="io.github.joshy1187">
+    <name>Josh</name>
+  </developer>
+  <description>
+    <p>
+      Termi is a native Linux terminal emulator built with Rust and Slint for
+      Ubuntu 24.04 on x86-64. It provides independent PTY-backed tabs in a
+      polished galactic desktop interface.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>ANSI, 256-color, true-color, Unicode, and wide-cell rendering</li>
+      <li>Searchable scrollback and guarded clipboard paste</li>
+      <li>Application mouse modes and alternate-screen programs</li>
+      <li>Strict local configuration and optional Bash integration</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">ai.clairos.termi.desktop</launchable>
+  <url type="homepage">https://github.com/joshy1187/termi</url>
+  <url type="bugtracker">https://github.com/joshy1187/termi/issues</url>
+  <url type="vcs-browser">https://github.com/joshy1187/termi</url>
+  <provides>
+    <binary>termi</binary>
+  </provides>
+  <categories>
+    <category>System</category>
+    <category>TerminalEmulator</category>
+  </categories>
+  <releases>
+    <release version="1.0.0" date="2026-07-15">
+      <description>
+        <p>Initial production release candidate for Ubuntu 24.04 x86-64.</p>
+      </description>
+    </release>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

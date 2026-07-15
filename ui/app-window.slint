@@ -1,3 +1,5 @@
+import { AboutSlint, LineEdit } from "std-widgets.slint";
+
 export struct TerminalCell {
     row: int,
     column: int,
@@ -9,6 +11,7 @@ export struct TerminalCell {
     underline: bool,
     cursor: bool,
     selected: bool,
+    search-match: bool,
     wide: bool,
 }
 
@@ -71,6 +74,36 @@ component ToolbarIcon inherits Rectangle {
     }
 }
 
+component ModalButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    callback activated;
+
+    height: 36px;
+    min-width: 92px;
+    border-radius: 9px;
+    background: hit.pressed
+        ? (root.primary ? #5088b8 : #3b4355)
+        : hit.has-hover
+            ? (root.primary ? #62a4d9 : #4a5367)
+            : (root.primary ? #477da9 : #303849);
+    border-width: 1px;
+    border-color: root.primary ? #87bce0aa : #68728788;
+
+    Text {
+        text: root.label;
+        color: #f1f3f8;
+        font-size: 12px;
+        font-weight: root.primary ? 700 : 500;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    hit := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.activated(); }
+    }
+}
+
 export component AppWindow inherits Window {
     title: "Termi";
     preferred-width: 1240px;
@@ -88,8 +121,9 @@ export component AppWindow inherits Window {
     in-out property <int> active-tab-index: 0;
     in property <int> terminal-columns: 80;
     in property <int> terminal-rows: 24;
-    in property <string> current-directory: "/home/josh";
+    in property <string> current-directory: "~";
     in property <string> shell-name: "bash";
+    in property <string> app-version: "";
     in property <string> terminal-font-family: "DejaVu Sans Mono";
     in property <float> terminal-font-size: 16;
     in property <float> terminal-cell-width: 9.64;
@@ -97,6 +131,14 @@ export component AppWindow inherits Window {
     in-out property <bool> bell-active: false;
     in property <color> background-overlay: #03070e78;
     in property <color> terminal-surface: #0a0b10c7;
+    in-out property <bool> search-open: false;
+    in-out property <string> search-query: "";
+    in-out property <string> search-status: "";
+    in-out property <bool> paste-confirmation-open: false;
+    in property <string> paste-summary: "";
+    in-out property <bool> error-open: false;
+    in property <string> error-message: "";
+    in-out property <bool> about-open: false;
 
     out property <float> terminal-viewport-width: terminal-focus.width / 1px;
     out property <float> terminal-viewport-height: terminal-focus.height / 1px;
@@ -105,15 +147,32 @@ export component AppWindow inherits Window {
     callback new-tab;
     callback close-tab(int);
     callback activate-tab(int);
+    callback next-tab(bool);
     callback close-active-tab;
     callback terminal-key(string, bool, bool, bool, bool);
-    callback terminal-scroll(float);
-    callback terminal-pointer(float, float, int);
+    callback terminal-scroll(float, float, float, bool, bool, bool);
+    callback terminal-pointer(float, float, int, int, bool, bool, bool);
     callback copy-request;
     callback paste-request;
+    callback confirm-paste;
+    callback cancel-paste;
+    callback search-changed(string);
+    callback search-next;
+    callback search-previous;
+    callback close-search;
+    callback dismiss-error;
+    callback close-about;
     callback open-menu;
 
+    public function focus-terminal() {
+        terminal-focus.focus();
+    }
+
     private property <bool> cursor-phase: true;
+    private property <bool> input-blocked: root.search-open
+        || root.paste-confirmation-open
+        || root.error-open
+        || root.about-open;
 
     Timer {
         interval: 530ms;
@@ -128,7 +187,7 @@ export component AppWindow inherits Window {
     }
 
     Image {
-        source: @image-url("../assets/backgrounds/galactic.webp");
+        source: @image-url("../assets/backgrounds/galactic.png");
         width: 100%;
         height: 100%;
         image-fit: cover;
@@ -344,6 +403,9 @@ export component AppWindow inherits Window {
                     focus-on-click: true;
 
                     key-pressed(event) => {
+                        if root.input-blocked {
+                            return accept;
+                        }
                         root.terminal-key(
                             event.text,
                             event.modifiers.control,
@@ -356,63 +418,138 @@ export component AppWindow inherits Window {
 
                     KeyBinding {
                         keys: @keys(Control + Shift + T);
+                        enabled: !root.input-blocked;
                         activated => { root.new-tab(); }
                     }
                     KeyBinding {
                         keys: @keys(Control + Shift + W);
+                        enabled: !root.input-blocked;
                         activated => { root.close-active-tab(); }
                     }
                     KeyBinding {
                         keys: @keys(Control + Shift + C);
+                        enabled: !root.input-blocked;
                         activated => { root.copy-request(); }
                     }
                     KeyBinding {
                         keys: @keys(Control + Shift + V);
+                        enabled: !root.input-blocked;
                         activated => { root.paste-request(); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Shift + F);
+                        enabled: !root.input-blocked;
+                        activated => {
+                            root.search-open = true;
+                            search-input.focus();
+                        }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Tab);
+                        enabled: !root.input-blocked;
+                        activated => { root.next-tab(false); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Control + Shift + Tab);
+                        enabled: !root.input-blocked;
+                        activated => { root.next-tab(true); }
+                    }
+                    KeyBinding {
+                        keys: @keys(Escape);
+                        enabled: root.search-open || root.paste-confirmation-open || root.error-open || root.about-open;
+                        activated => {
+                            if root.error-open {
+                                root.error-open = false;
+                                root.dismiss-error();
+                            } else if root.paste-confirmation-open {
+                                root.paste-confirmation-open = false;
+                                root.cancel-paste();
+                            } else if root.about-open {
+                                root.about-open = false;
+                                root.close-about();
+                            } else if root.search-open {
+                                root.close-search();
+                                terminal-focus.focus();
+                            }
+                        }
+                    }
+                    KeyBinding {
+                        keys: @keys(Return);
+                        enabled: root.paste-confirmation-open || root.error-open || root.about-open;
+                        activated => {
+                            if root.paste-confirmation-open {
+                                root.paste-confirmation-open = false;
+                                root.confirm-paste();
+                            } else if root.error-open {
+                                root.error-open = false;
+                                root.dismiss-error();
+                            } else if root.about-open {
+                                root.about-open = false;
+                                root.close-about();
+                            }
+                        }
                     }
 
                     terminal-touch := TouchArea {
                         width: 100%;
                         height: 100%;
                         mouse-cursor: text;
+                        private property <int> active-button: 0;
+                        private property <bool> pointer-shift: false;
+                        private property <bool> pointer-alt: false;
+                        private property <bool> pointer-control: false;
 
                         pointer-event(event) => {
+                            terminal-touch.pointer-shift = event.modifiers.shift;
+                            terminal-touch.pointer-alt = event.modifiers.alt;
+                            terminal-touch.pointer-control = event.modifiers.control;
                             if event.kind == PointerEventKind.down {
                                 terminal-focus.focus();
-
-                                if event.button == PointerEventButton.left {
-                                    root.terminal-pointer(
-                                        terminal-touch.mouse-x / 1px,
-                                        terminal-touch.mouse-y / 1px,
-                                        0
-                                    );
-                                } else if event.button == PointerEventButton.right {
-                                    root.paste-request();
-                                } else if event.button == PointerEventButton.middle {
-                                    root.paste-request();
-                                }
-                            } else if event.kind == PointerEventKind.up
-                                && event.button == PointerEventButton.left {
+                                terminal-touch.active-button = event.button == PointerEventButton.left
+                                    ? 0 : event.button == PointerEventButton.middle ? 1 : 2;
                                 root.terminal-pointer(
                                     terminal-touch.mouse-x / 1px,
                                     terminal-touch.mouse-y / 1px,
-                                    2
+                                    terminal-touch.active-button,
+                                    0,
+                                    event.modifiers.shift,
+                                    event.modifiers.alt,
+                                    event.modifiers.control
+                                );
+                            } else if event.kind == PointerEventKind.up {
+                                root.terminal-pointer(
+                                    terminal-touch.mouse-x / 1px,
+                                    terminal-touch.mouse-y / 1px,
+                                    terminal-touch.active-button,
+                                    2,
+                                    event.modifiers.shift,
+                                    event.modifiers.alt,
+                                    event.modifiers.control
                                 );
                             }
                         }
 
                         moved => {
-                            if terminal-touch.pressed {
-                                root.terminal-pointer(
-                                    terminal-touch.mouse-x / 1px,
-                                    terminal-touch.mouse-y / 1px,
-                                    1
-                                );
-                            }
+                            root.terminal-pointer(
+                                terminal-touch.mouse-x / 1px,
+                                terminal-touch.mouse-y / 1px,
+                                terminal-touch.active-button,
+                                1,
+                                terminal-touch.pointer-shift,
+                                terminal-touch.pointer-alt,
+                                terminal-touch.pointer-control
+                            );
                         }
 
                         scroll-event(event) => {
-                            root.terminal-scroll(event.delta-y / 1px);
+                            root.terminal-scroll(
+                                terminal-touch.mouse-x / 1px,
+                                terminal-touch.mouse-y / 1px,
+                                event.delta-y / 1px,
+                                event.modifiers.shift,
+                                event.modifiers.alt,
+                                event.modifiers.control
+                            );
                             accept
                         }
                     }
@@ -426,7 +563,9 @@ export component AppWindow inherits Window {
                             ? #eef2fb
                             : cell.selected
                                 ? #537db8cc
-                                : cell.background;
+                                : cell.search-match
+                                    ? #b8872dcc
+                                    : cell.background;
 
                         Text {
                             x: 0px;
@@ -455,6 +594,82 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
+
+                search-panel := Rectangle {
+                    visible: root.search-open;
+                    x: parent.width - self.width - 18px;
+                    y: 12px;
+                    width: min(470px, parent.width - 36px);
+                    height: 46px;
+                    border-radius: 11px;
+                    background: #161a25f2;
+                    border-width: 1px;
+                    border-color: #65708baa;
+
+                    HorizontalLayout {
+                        padding: 7px;
+                        spacing: 7px;
+
+                        search-input := LineEdit {
+                            horizontal-stretch: 1;
+                            text <=> root.search-query;
+                            placeholder-text: "Search scrollback";
+                            edited(value) => { root.search-changed(value); }
+                            accepted => { root.search-next(); }
+                            key-pressed(event) => {
+                                if event.text == Key.Escape {
+                                    root.close-search();
+                                    terminal-focus.focus();
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                        }
+
+                        Text {
+                            text: root.search-status;
+                            color: #aab1c3;
+                            font-size: 10px;
+                            vertical-alignment: center;
+                            min-width: 68px;
+                            horizontal-alignment: center;
+                        }
+
+                        Rectangle {
+                            width: 28px;
+                            border-radius: 7px;
+                            background: previous-search.has-hover ? #424b63 : #30384c;
+                            Text { text: "↑"; color: #e7eaf2; horizontal-alignment: center; vertical-alignment: center; }
+                            previous-search := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.search-previous(); }
+                            }
+                        }
+                        Rectangle {
+                            width: 28px;
+                            border-radius: 7px;
+                            background: next-search.has-hover ? #424b63 : #30384c;
+                            Text { text: "↓"; color: #e7eaf2; horizontal-alignment: center; vertical-alignment: center; }
+                            next-search := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.search-next(); }
+                            }
+                        }
+                        Rectangle {
+                            width: 28px;
+                            border-radius: 7px;
+                            background: close-search-hit.has-hover ? #5b3540 : transparent;
+                            Text { text: "×"; color: #e7eaf2; horizontal-alignment: center; vertical-alignment: center; }
+                            close-search-hit := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.close-search();
+                                    terminal-focus.focus();
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -476,6 +691,156 @@ export component AppWindow inherits Window {
                     color: #9ba3b6;
                     font-size: 10px;
                     vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    if root.paste-confirmation-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #03050ab8;
+        TouchArea {
+            clicked => {
+                root.paste-confirmation-open = false;
+                root.cancel-paste();
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(520px, parent.width - 48px);
+            height: 210px;
+            border-radius: 16px;
+            background: #161a25;
+            border-width: 1px;
+            border-color: #69748eaa;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+                Text {
+                    text: "Confirm paste";
+                    color: #f2f4f9;
+                    font-size: 18px;
+                    font-weight: 700;
+                }
+                Text {
+                    text: root.paste-summary;
+                    color: #c3c9d7;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: end;
+                    ModalButton {
+                        label: "Cancel";
+                        activated => {
+                            root.paste-confirmation-open = false;
+                            root.cancel-paste();
+                        }
+                    }
+                    ModalButton {
+                        label: "Paste";
+                        primary: true;
+                        activated => {
+                            root.paste-confirmation-open = false;
+                            root.confirm-paste();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.error-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #03050ab8;
+        TouchArea { }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(560px, parent.width - 48px);
+            height: 220px;
+            border-radius: 16px;
+            background: #1b1921;
+            border-width: 1px;
+            border-color: #a85d6baa;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 16px;
+                Text { text: "Termi needs attention"; color: #f7edf0; font-size: 18px; font-weight: 700; }
+                Text {
+                    text: root.error-message;
+                    color: #d7c4ca;
+                    font-size: 13px;
+                    wrap: word-wrap;
+                    vertical-stretch: 1;
+                }
+                HorizontalLayout {
+                    alignment: end;
+                    ModalButton {
+                        label: "OK";
+                        primary: true;
+                        activated => {
+                            root.error-open = false;
+                            root.dismiss-error();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if root.about-open : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #03050ac7;
+        TouchArea {
+            clicked => {
+                root.about-open = false;
+                root.close-about();
+            }
+        }
+
+        Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            width: min(520px, parent.width - 48px);
+            height: 390px;
+            border-radius: 16px;
+            background: #161a25;
+            border-width: 1px;
+            border-color: #69748eaa;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 12px;
+                Text { text: "Termi"; color: #f2f4f9; font-size: 24px; font-weight: 800; horizontal-alignment: center; }
+                Text { text: "Version " + root.app-version; color: #aeb6c8; font-size: 12px; horizontal-alignment: center; }
+                AboutSlint { vertical-stretch: 1; }
+                Text {
+                    text: "Third-party license notices are included with every Termi release.";
+                    color: #aeb6c8;
+                    font-size: 11px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+                HorizontalLayout {
+                    alignment: center;
+                    ModalButton {
+                        label: "Close";
+                        activated => {
+                            root.about-open = false;
+                            root.close-about();
+                        }
+                    }
                 }
             }
         }

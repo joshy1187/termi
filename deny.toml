@@ -1,0 +1,20 @@
+[graph]
+targets = ["x86_64-unknown-linux-gnu"]
+
+[advisories]
+# Only direct workspace dependencies fail for maintenance-only notices. Slint
+# currently brings in several maintained-at-the-framework-level crates whose
+# leaf packages are marked unmaintained; Dependabot and the pinned Slint update
+# path keep those visible without making every build fail on an unactionable
+# transitive notice.
+unmaintained = "workspace"
+ignore = [
+    { id = "RUSTSEC-2026-0194", reason = "quick-xml 0.39.4 is used only by the latest wayland-scanner 0.31.10 proc macro against locked, bundled Wayland protocol XML; no untrusted runtime XML reaches it, and upstream does not yet accept quick-xml 0.41" },
+    { id = "RUSTSEC-2026-0195", reason = "quick-xml 0.39.4 is used only by the latest wayland-scanner 0.31.10 proc macro against locked, bundled Wayland protocol XML; no untrusted runtime XML reaches it, and upstream does not yet accept quick-xml 0.41" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
