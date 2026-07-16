@@ -3,19 +3,57 @@
 
 __termi_percent_encode_path() {
     local value=${1-}
-    value=${value//'%'/'%25'}
-    value=${value//' '/'%20'}
-    value=${value//'#'/'%23'}
-    value=${value//'?'/'%3F'}
-    printf '%s' "$value"
+    local character encoded index output=""
+    local LC_ALL=C
+
+    for ((index = 0; index < ${#value}; index++)); do
+        character=${value:index:1}
+        case $character in
+            [a-zA-Z0-9._~/-]) output+=$character ;;
+            *)
+                printf -v encoded '%%%02X' "'$character"
+                output+=$encoded
+                ;;
+        esac
+    done
+    printf '%s' "$output"
+}
+
+__termi_safe_title() {
+    local value=${1-}
+    local character encoded index output=""
+    local LC_ALL=C
+
+    for ((index = 0; index < ${#value}; index++)); do
+        character=${value:index:1}
+        case $character in
+            [[:print:]]) output+=$character ;;
+            *)
+                printf -v encoded '%%%02X' "'$character"
+                output+=$encoded
+                ;;
+        esac
+    done
+    printf '%s' "$output"
 }
 
 __termi_update_context() {
     [[ ${TERM_PROGRAM-} == Termi ]] || return 0
-    local encoded_path
+    local display_path encoded_host encoded_path hostname title username
+    hostname=${HOSTNAME:-localhost}
+    username=${USER:-user}
+    display_path=$PWD
+    if [[ -n ${HOME:-} && $display_path == "$HOME" ]]; then
+        display_path="~"
+    elif [[ -n ${HOME:-} && $display_path == "$HOME/"* ]]; then
+        display_path="~/${display_path#"$HOME/"}"
+    fi
+
+    encoded_host=$(__termi_percent_encode_path "$hostname")
     encoded_path=$(__termi_percent_encode_path "$PWD")
-    printf '\033]7;file://%s%s\007' "${HOSTNAME:-localhost}" "$encoded_path"
-    printf '\033]2;%s@%s:%s\007' "${USER:-user}" "${HOSTNAME%%.*}" "${PWD/#$HOME/~}"
+    title=$(__termi_safe_title "$username@${hostname%%.*}:$display_path")
+    printf '\033]7;file://%s%s\007' "$encoded_host" "$encoded_path"
+    printf '\033]2;%s\007' "$title"
 }
 
 if [[ ${TERM_PROGRAM-} == Termi ]]; then

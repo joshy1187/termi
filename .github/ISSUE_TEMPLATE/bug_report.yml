@@ -1,0 +1,79 @@
+name: Bug report
+description: Report reproducible incorrect behavior in Termi.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Termi. Remove secrets and private terminal output before submitting logs or screenshots.
+  - type: input
+    id: version
+    attributes:
+      label: Termi version
+      description: Run `termi --version`.
+      placeholder: termi 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Desktop session
+      options:
+        - Wayland
+        - X11
+        - XWayland or mixed
+        - Unknown
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04 x86_64
+    validations:
+      required: true
+  - type: input
+    id: shell
+    attributes:
+      label: Shell and application
+      description: Include the configured shell and any full-screen program involved.
+      placeholder: Bash 5.2; tmux 3.4
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Termi...
+        2. Run...
+        3. Press...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: If useful, reproduce with `RUST_LOG=termi=debug termi`. Remove commands, paths, hostnames, and secrets you do not want public.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission checks
+      options:
+        - label: I reproduced this on the supported Ubuntu 24.04 x86_64 target or clearly identified a different environment.
+          required: true
+        - label: I removed secrets and private terminal content.
+          required: true

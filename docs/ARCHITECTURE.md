@@ -1,55 +1,101 @@
 # Termi architecture
 
-## UI process
+## Process and UI ownership
 
-Slint owns the application event loop. `src/app.rs` keeps the controller on the UI thread and installs every generated callback. A repeated timer polls session dirty flags, calculates terminal rows and columns from the viewport, resizes the active PTY, and replaces the Slint cell model only when state changed.
+Slint owns the main thread and event loop. `src/app.rs` keeps the tab controller
+inside an `Rc<RefCell<_>>`, installs generated UI callbacks, calculates grid
+dimensions, and only replaces the rendered cell model when a session marks
+itself dirty.
 
-## Session model
+Closing a tab removes that session and explicitly terminates its child process.
+Closing the last tab quits the event loop; Termi does not silently create a
+replacement shell. Tab creation is transactional and capped at 32 sessions.
+
+Termi registers `ai.clairos.termi` as its XDG application ID before creating
+the window, so Wayland app IDs, X11 `WM_CLASS`, and the desktop file agree.
+
+## Session workers
 
 Each `TerminalSession` owns:
 
-- one PTY master,
-- one writer,
-- one cloned child killer,
-- one parser and screen,
-- one reader thread,
-- one child wait thread,
-- terminal title/current-directory state,
-- resize state,
-- selection state,
-- atomic dirty, exit, and bell flags.
+- one PTY master and cloned child killer;
+- a `vt100` parser and visible/scrollback screen;
+- a named PTY reader thread;
+- a named, bounded PTY writer thread;
+- a child-wait thread;
+- title, displayed directory, local initial directory, size, selection, search,
+  and mouse state;
+- atomic dirty, exit, bell, and writer-status flags.
 
-Dropping the final session handle terminates a still-running child. Closing one tab does not affect any other tab.
+The UI never writes directly to the PTY. Input is enqueued without blocking;
+the writer thread owns the writer and flushes messages in order. Queue capacity
+is bounded both by message count and pending bytes. Terminal-generated replies
+use the same ordered channel. The writer owns the receiver and shared queue/error
+state but deliberately does not retain a sender clone, so dropping a session
+disconnects the channel and lets the worker exit.
 
-## Rendering model
+The reader applies an incremental OSC length guard before bytes reach the
+parser. Once an OSC exceeds the cap, its remaining bytes—including embedded
+escape sequences—stay discarded through the real string terminator. The reader
+then processes parser state under a mutex and marks the session dirty. The UI
+timer snapshots only dirty sessions.
 
-The terminal parser produces a screen grid. `snapshot()` walks the visible cells and emits only cells that contain text, a non-default background, the cursor, or a selection. Rust maps terminal colors to Slint colors and the UI positions each cell using explicit cell dimensions.
+## Terminal protocol support
 
-The current approach favors correctness and iteration speed over maximum throughput. Once behavior stabilizes, the renderer should batch glyphs into a custom Slint rendering layer rather than creating one visual subtree per emitted cell.
+The parser provides ANSI styling, 16/256/true color, Unicode cells, scrollback,
+alternate screen, application cursor mode, bracketed paste, and xterm mouse
+modes. Termi adds replies for primary/secondary device attributes, operating
+status, cursor position, and text-area size queries.
+
+Mouse events use the active X10/VT200/button-motion/any-motion mode and default,
+UTF-8, or SGR encoding. Holding Shift bypasses application mouse capture for
+local selection and history scrolling.
+
+OSC title and directory values are bounded and normalized as display metadata.
+OSC 7 never selects a local directory for a new process. New tabs resolve the
+active shell's actual directory from `/proc/<pid>/cwd`, with local fallbacks.
+
+## Search and rendering
+
+Scrollback search runs on one coalescing worker, so rapid edits do not create an
+unbounded thread set. Queued work holds weak session references, closing a tab
+explicitly terminates its child, and results carry generation and session
+identifiers so stale UI results are ignored. A selected result scrolls into
+view and contributes a highlight range to the next snapshot.
+
+`snapshot()` walks visible cells and emits only cells that contain text, a
+non-default background, cursor, selection, or search highlight. Rust converts
+terminal colors to Slint colors; Slint positions each emitted cell with explicit
+configured dimensions.
+
+This cell-item renderer favors predictable behavior over peak throughput. A
+future renderer can batch glyphs behind the same snapshot boundary without
+changing PTY or controller ownership.
 
 ## Lock ordering
 
-- Selection values are copied out before acquiring the parser lock.
-- PTY resize acquires the PTY master before the parser.
-- Terminal snapshots acquire the parser, then briefly copy selection state.
-- UI controller state never crosses worker threads.
+- Parser state is acquired before search highlight state.
+- Selection values are copied while the parser is already held for snapshots.
+- PTY resize acquires the master before parser state.
+- The Slint controller never crosses worker threads.
+- Worker results cross into the UI through channels and are polled by the UI
+  timer.
 
-Keep this ordering intact when expanding the engine.
+Keep this ordering when extending the engine.
 
-## Security boundaries
+## Configuration and release boundary
 
-- Termi launches the user-configured shell directly; it does not invoke `sh -c` around user input.
-- The project forbids unsafe Rust in its own crate.
-- OSC title and current-directory data are treated as display state, not commands.
-- OSC 52 clipboard requests are deliberately not implemented yet.
-- The desktop launcher does not start a shell through a wrapper script.
+Configuration version 1 is strict, validated before session creation, bounded
+to 64 KiB, and atomically created with user-only permissions. Runtime geometry
+is capped as well as initial geometry.
 
-## Next engine milestones
+The supported release target is Ubuntu 24.04 x86_64. GitHub Actions validates
+with Rust 1.92, produces Debian, AppImage, and tarball artifacts, checks
+extracted binaries and desktop metadata, generates dependency license texts,
+hashes artifacts, and creates build provenance attestations.
 
-1. Terminal response channel for device status and clipboard query responses.
-2. Full xterm mouse reporting and application mouse-mode bypass of selection.
-3. Searchable scrollback with match overlays.
-4. Hyperlink parsing and guarded URL launching.
-5. GPU/custom glyph batching.
-6. Split-pane tree and persistent workspace model.
-7. Automated vttest and escape-sequence regression fixtures.
+## Deferred capabilities
+
+Split panes, workspace persistence, clickable hyperlinks, image protocols,
+ligatures, ARM packages, Flatpak, and automatic updates are intentionally not
+part of the 1.0 contract.
