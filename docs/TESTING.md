@@ -88,6 +88,9 @@ WINIT_UNIX_BACKEND=x11 cargo run --locked
   `top`, or `htop` and return to the original screen.
 - Test arrows, Home/End, Insert/Delete, Page Up/Down, F1-F12, modifiers,
   Ctrl+C, Ctrl+D, Ctrl+L, Alt-prefixed input, and Shift+Tab.
+- Enter mixed lowercase, uppercase, numeric, and symbol text at a hidden
+  `read -rs` prompt, then verify the received bytes after safely revealing the
+  test value; modifier key presses must not add hidden bytes.
 - Confirm application-cursor mode and terminal status queries work in a program
   that uses them.
 
@@ -102,8 +105,13 @@ WINIT_UNIX_BACKEND=x11 cargo run --locked
 - Paste a single safe line, multiple lines, control characters, and input near
   the 1 MiB limit. Confirm multiline/sanitized input requires approval.
 - Test bracketed paste in an application that enables it.
-- Test ordinary selection, Shift override, middle-click paste, and mouse
-  reporting in `vim` or another compatible full-screen application.
+- Right-click in normal output and in `vim` or another compatible full-screen
+  application. Confirm a Copy/Paste menu opens at the pointer, neither action
+  is sent as a terminal mouse event, and paste still requires confirmation for
+  multiline or sanitized clipboard text.
+- Drag with the left button in normal output and while a full-screen program
+  has mouse reporting enabled. Confirm text highlights and can be copied from
+  the context menu; verify middle-click paste and Shift history scrolling.
 
 ## Performance and soak checks
 

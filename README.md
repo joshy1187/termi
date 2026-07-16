@@ -147,12 +147,14 @@ silently change behavior. Restart Termi after editing it.
 | `Ctrl+Shift+V` | Paste; multiline or cleaned input requires confirmation |
 | `Ctrl+Shift+F` | Search scrollback |
 | Mouse wheel / touchpad | Scroll history |
-| `Shift` + pointer | Select text when an application has mouse capture |
+| Left-button drag | Select and highlight text, including when an application has mouse capture |
 | Middle click | Paste when application mouse capture is off |
+| Right click | Open the Copy/Paste menu; paste retains its safety confirmation when needed |
 
 Arrows, Home/End, Insert/Delete, Page Up/Down, F1–F12, modified function
 keys, normal text, Alt-prefixed text, and standard control characters are
-forwarded to the active PTY. Right click does not paste.
+forwarded to the active PTY. The left button is reserved for local selection
+and right click never sends a mouse event or pastes directly.
 
 ## Terminal behavior and limits
 

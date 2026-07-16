@@ -7,6 +7,8 @@ All notable changes to Termi are documented here. The project follows
 
 ### Added
 
+- A terminal right-click Copy/Paste menu that reuses the guarded clipboard
+  paste flow.
 - Native Rust and Slint terminal window for Ubuntu 24.04 x86_64.
 - Independent PTY-backed tabs with lifecycle cleanup and a 32-tab limit.
 - ANSI, 16/256/true-color, Unicode, wide-cell, alternate-screen, bracketed
@@ -24,6 +26,10 @@ All notable changes to Termi are documented here. The project follows
 
 ### Changed
 
+- Stopped modifier-key state events from being written into terminal input,
+  fixing password and other text containing uppercase characters or symbols.
+- Left-button drags now always select and highlight terminal text, including
+  when a full-screen application has enabled mouse reporting.
 - Consolidated the bundled galactic background into one tracked PNG.
 - Matched the Wayland application ID, X11 class, and desktop launcher ID.
 - Updated the local installer to replace the legacy Termi launcher and icon,

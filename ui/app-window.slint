@@ -169,10 +169,14 @@ export component AppWindow inherits Window {
     }
 
     private property <bool> cursor-phase: true;
+    private property <bool> context-menu-open: false;
+    private property <float> context-menu-x: 0;
+    private property <float> context-menu-y: 0;
     private property <bool> input-blocked: root.search-open
         || root.paste-confirmation-open
         || root.error-open
-        || root.about-open;
+        || root.about-open
+        || root.context-menu-open;
 
     Timer {
         interval: 530ms;
@@ -456,7 +460,7 @@ export component AppWindow inherits Window {
                     }
                     KeyBinding {
                         keys: @keys(Escape);
-                        enabled: root.search-open || root.paste-confirmation-open || root.error-open || root.about-open;
+                        enabled: root.search-open || root.paste-confirmation-open || root.error-open || root.about-open || root.context-menu-open;
                         activated => {
                             if root.error-open {
                                 root.error-open = false;
@@ -469,6 +473,9 @@ export component AppWindow inherits Window {
                                 root.close-about();
                             } else if root.search-open {
                                 root.close-search();
+                                terminal-focus.focus();
+                            } else if root.context-menu-open {
+                                root.context-menu-open = false;
                                 terminal-focus.focus();
                             }
                         }
@@ -495,6 +502,7 @@ export component AppWindow inherits Window {
                         height: 100%;
                         mouse-cursor: text;
                         private property <int> active-button: 0;
+                        private property <bool> pointer-down: false;
                         private property <bool> pointer-shift: false;
                         private property <bool> pointer-alt: false;
                         private property <bool> pointer-control: false;
@@ -507,38 +515,51 @@ export component AppWindow inherits Window {
                                 terminal-focus.focus();
                                 terminal-touch.active-button = event.button == PointerEventButton.left
                                     ? 0 : event.button == PointerEventButton.middle ? 1 : 2;
-                                root.terminal-pointer(
-                                    terminal-touch.mouse-x / 1px,
-                                    terminal-touch.mouse-y / 1px,
-                                    terminal-touch.active-button,
-                                    0,
-                                    event.modifiers.shift,
-                                    event.modifiers.alt,
-                                    event.modifiers.control
-                                );
+                                terminal-touch.pointer-down = true;
+                                if terminal-touch.active-button == 2 {
+                                    root.context-menu-x = terminal-touch.mouse-x / 1px;
+                                    root.context-menu-y = terminal-touch.mouse-y / 1px;
+                                    root.context-menu-open = true;
+                                } else {
+                                    root.context-menu-open = false;
+                                    root.terminal-pointer(
+                                        terminal-touch.mouse-x / 1px,
+                                        terminal-touch.mouse-y / 1px,
+                                        terminal-touch.active-button,
+                                        0,
+                                        event.modifiers.shift,
+                                        event.modifiers.alt,
+                                        event.modifiers.control
+                                    );
+                                }
                             } else if event.kind == PointerEventKind.up {
-                                root.terminal-pointer(
-                                    terminal-touch.mouse-x / 1px,
-                                    terminal-touch.mouse-y / 1px,
-                                    terminal-touch.active-button,
-                                    2,
-                                    event.modifiers.shift,
-                                    event.modifiers.alt,
-                                    event.modifiers.control
-                                );
+                                if terminal-touch.pointer-down && terminal-touch.active-button != 2 {
+                                    root.terminal-pointer(
+                                        terminal-touch.mouse-x / 1px,
+                                        terminal-touch.mouse-y / 1px,
+                                        terminal-touch.active-button,
+                                        2,
+                                        event.modifiers.shift,
+                                        event.modifiers.alt,
+                                        event.modifiers.control
+                                    );
+                                }
+                                terminal-touch.pointer-down = false;
                             }
                         }
 
                         moved => {
-                            root.terminal-pointer(
-                                terminal-touch.mouse-x / 1px,
-                                terminal-touch.mouse-y / 1px,
-                                terminal-touch.active-button,
-                                1,
-                                terminal-touch.pointer-shift,
-                                terminal-touch.pointer-alt,
-                                terminal-touch.pointer-control
-                            );
+                            if terminal-touch.pointer-down && terminal-touch.active-button != 2 {
+                                root.terminal-pointer(
+                                    terminal-touch.mouse-x / 1px,
+                                    terminal-touch.mouse-y / 1px,
+                                    terminal-touch.active-button,
+                                    1,
+                                    terminal-touch.pointer-shift,
+                                    terminal-touch.pointer-alt,
+                                    terminal-touch.pointer-control
+                                );
+                            }
                         }
 
                         scroll-event(event) => {
@@ -592,10 +613,74 @@ export component AppWindow inherits Window {
                             height: 1px;
                             background: cell.foreground;
                         }
+                        }
                     }
-                }
 
-                search-panel := Rectangle {
+                    context-menu := Rectangle {
+                        visible: root.context-menu-open;
+                        x: min(max(8px, root.context-menu-x * 1px), max(8px, parent.width - self.width - 8px));
+                        y: min(max(8px, root.context-menu-y * 1px), max(8px, parent.height - self.height - 8px));
+                        width: 158px;
+                        height: 82px;
+                        border-radius: 10px;
+                        background: #1a1f2df8;
+                        border-width: 1px;
+                        border-color: #72809bae;
+
+                        Rectangle {
+                            x: 5px;
+                            y: 5px;
+                            width: parent.width - 10px;
+                            height: 34px;
+                            border-radius: 7px;
+                            background: copy-hit.has-hover ? #3c4c69 : transparent;
+                            Text {
+                                x: 11px;
+                                width: parent.width - 22px;
+                                height: parent.height;
+                                text: "Copy";
+                                color: #edf1fa;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            copy-hit := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.context-menu-open = false;
+                                    root.copy-request();
+                                    terminal-focus.focus();
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            x: 5px;
+                            y: 43px;
+                            width: parent.width - 10px;
+                            height: 34px;
+                            border-radius: 7px;
+                            background: paste-hit.has-hover ? #3c4c69 : transparent;
+                            Text {
+                                x: 11px;
+                                width: parent.width - 22px;
+                                height: parent.height;
+                                text: "Paste";
+                                color: #edf1fa;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                            paste-hit := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.context-menu-open = false;
+                                    root.paste-request();
+                                    terminal-focus.focus();
+                                }
+                            }
+                        }
+                    }
+
+                    search-panel := Rectangle {
                     visible: root.search-open;
                     x: parent.width - self.width - 18px;
                     y: 12px;

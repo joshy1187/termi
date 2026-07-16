@@ -576,7 +576,11 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
             _ => return,
         };
 
-        let selecting = shift || !session.mouse_reporting();
+        // Text selection is a primary terminal interaction.  Keep the left
+        // button local even while a full-screen application has enabled mouse
+        // reporting; Shift continues to make the other local overrides
+        // available as well.
+        let selecting = button == MouseButton::Left || shift || !session.mouse_reporting();
         if selecting && phase == MousePhase::Release {
             session.cancel_mouse_tracking();
         }

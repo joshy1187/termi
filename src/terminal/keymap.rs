@@ -12,6 +12,28 @@ pub fn encode_key(
         text == value.as_str()
     };
 
+    // Slint reports modifier transitions as individual key events. They update
+    // its modifier state but are not terminal input themselves. Forwarding
+    // their internal control-code representation corrupts the next typed
+    // character, which is especially hard to notice at a hidden password
+    // prompt.
+    if [
+        Key::Shift,
+        Key::ShiftR,
+        Key::Control,
+        Key::ControlR,
+        Key::Alt,
+        Key::AltGr,
+        Key::Meta,
+        Key::MetaR,
+        Key::CapsLock,
+    ]
+    .into_iter()
+    .any(special)
+    {
+        return None;
+    }
+
     let modifier = modifier_parameter(control, alt, shift);
 
     if special(Key::UpArrow) {
@@ -165,6 +187,28 @@ mod tests {
     #[test]
     fn encodes_control_c() {
         assert_eq!(encode_control("c"), Some(vec![3]));
+    }
+
+    #[test]
+    fn ignores_modifier_key_events() {
+        for key in [
+            Key::Shift,
+            Key::ShiftR,
+            Key::Control,
+            Key::ControlR,
+            Key::Alt,
+            Key::AltGr,
+            Key::Meta,
+            Key::MetaR,
+            Key::CapsLock,
+        ] {
+            let key: SharedString = key.into();
+            assert_eq!(
+                encode_key(key.as_str(), false, false, false, false),
+                None,
+                "modifier key must not become PTY input"
+            );
+        }
     }
 
     #[test]
