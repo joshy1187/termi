@@ -111,7 +111,8 @@ WINIT_UNIX_BACKEND=x11 cargo run --locked
   multiline or sanitized clipboard text.
 - Drag with the left button in normal output and while a full-screen program
   has mouse reporting enabled. Confirm text highlights and can be copied from
-  the context menu; verify middle-click paste and Shift history scrolling.
+  the context menu; verify middle-click paste and wheel/touchpad history scrolling
+  in both states.
 
 ## Performance and soak checks
 

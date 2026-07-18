@@ -28,6 +28,28 @@ use crate::{
 
 const MAX_TABS: usize = 32;
 const XDG_APP_ID: &str = "ai.clairos.termi";
+const SCROLL_PIXELS_PER_LINE: f32 = 40.0;
+
+#[derive(Debug, Default)]
+struct ScrollAccumulator {
+    remainder: f32,
+}
+
+impl ScrollAccumulator {
+    fn push(&mut self, delta: f32) -> i32 {
+        if !delta.is_finite() {
+            return 0;
+        }
+        self.remainder += delta;
+        let lines = (self.remainder / SCROLL_PIXELS_PER_LINE).trunc() as i32;
+        self.remainder -= lines as f32 * SCROLL_PIXELS_PER_LINE;
+        lines
+    }
+
+    fn reset(&mut self) {
+        self.remainder = 0.0;
+    }
+}
 
 struct PendingPaste {
     session_id: u64,
@@ -54,6 +76,7 @@ struct Controller {
     active: usize,
     next_id: u64,
     clipboard: Option<arboard::Clipboard>,
+    scroll_accumulator: ScrollAccumulator,
     pending_paste: Option<PendingPaste>,
     search_generation: u64,
     search_request_sender: Sender<SearchRequest>,
@@ -108,7 +131,8 @@ impl Controller {
             sessions: vec![first],
             active: 0,
             next_id: 2,
-            clipboard: arboard::Clipboard::new().ok(),
+            clipboard: None,
+            scroll_accumulator: ScrollAccumulator::default(),
             pending_paste: None,
             search_generation: 0,
             search_request_sender,
@@ -119,6 +143,15 @@ impl Controller {
 
     fn active_session(&self) -> Option<&Arc<TerminalSession>> {
         self.sessions.get(self.active)
+    }
+
+    fn desktop_clipboard(&mut self) -> Result<&mut arboard::Clipboard> {
+        if self.clipboard.is_none() {
+            self.clipboard = arboard::Clipboard::new().ok();
+        }
+        self.clipboard
+            .as_mut()
+            .context("the desktop clipboard is unavailable")
     }
 
     fn new_tab(&mut self) -> Result<()> {
@@ -147,6 +180,7 @@ impl Controller {
         self.next_id += 1;
         self.sessions.push(session);
         self.active = self.sessions.len() - 1;
+        self.scroll_accumulator.reset();
         Ok(())
     }
 
@@ -159,6 +193,7 @@ impl Controller {
         if let Err(error) = session.terminate() {
             debug!(%error, session_id = session.id(), "failed to terminate closed terminal tab");
         }
+        self.scroll_accumulator.reset();
         if self.sessions.is_empty() {
             self.active = 0;
             self.pending_paste = None;
@@ -177,10 +212,16 @@ impl Controller {
                 session.clear_search();
             }
             self.active = index;
+            self.scroll_accumulator.reset();
             if let Some(session) = self.active_session() {
                 session.take_dirty();
             }
         }
+    }
+
+    fn tab_index_by_id(&self, id: i32) -> Option<usize> {
+        let id = u64::try_from(id).ok()?;
+        self.sessions.iter().position(|session| session.id() == id)
     }
 
     fn copy_visible(&mut self) -> Result<()> {
@@ -191,18 +232,14 @@ impl Controller {
         }) else {
             return Ok(());
         };
-        self.clipboard
-            .as_mut()
-            .context("the desktop clipboard is unavailable")?
+        self.desktop_clipboard()?
             .set_text(text)
             .context("failed to copy terminal text")
     }
 
     fn request_paste(&mut self) -> Result<Option<String>> {
         let text = self
-            .clipboard
-            .as_mut()
-            .context("the desktop clipboard is unavailable")?
+            .desktop_clipboard()?
             .get_text()
             .context("failed to read clipboard text")?;
         let prepared = prepare_paste(&text)?;
@@ -390,6 +427,28 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
     });
 
     let app_weak = app.as_weak();
+    app.on_minimize_window(move || {
+        if let Some(app) = app_weak.upgrade() {
+            app.window().set_minimized(true);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_toggle_maximize_window(move || {
+        if let Some(app) = app_weak.upgrade() {
+            let maximized = app.window().is_maximized();
+            app.window().set_maximized(!maximized);
+        }
+    });
+
+    let app_weak = app.as_weak();
+    app.on_close_window(move || {
+        if let Some(app) = app_weak.upgrade() {
+            close_application(&app);
+        }
+    });
+
+    let app_weak = app.as_weak();
     let callback_controller = Rc::clone(&controller);
     app.on_new_tab(move || {
         let result = callback_controller.borrow_mut().new_tab();
@@ -416,21 +475,20 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
 
     let app_weak = app.as_weak();
     let callback_controller = Rc::clone(&controller);
-    app.on_close_tab(move |index| {
-        if index < 0 {
+    app.on_close_tab(move |tab_id| {
+        let mut controller = callback_controller.borrow_mut();
+        let Some(index) = controller.tab_index_by_id(tab_id) else {
             return;
-        }
-
-        let should_close = callback_controller.borrow_mut().close_tab(index as usize);
+        };
+        let should_close = controller.close_tab(index);
         if let Some(app) = app_weak.upgrade() {
             if should_close {
                 close_application(&app);
             } else {
                 {
-                    let controller = callback_controller.borrow();
                     refresh_ui(&app, &controller);
                 }
-                close_search_ui(&app, &mut callback_controller.borrow_mut());
+                close_search_ui(&app, &mut controller);
             }
         }
     });
@@ -454,16 +512,15 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
 
     let app_weak = app.as_weak();
     let callback_controller = Rc::clone(&controller);
-    app.on_activate_tab(move |index| {
-        if index < 0 {
+    app.on_activate_tab(move |tab_id| {
+        let mut controller = callback_controller.borrow_mut();
+        let Some(index) = controller.tab_index_by_id(tab_id) else {
             return;
-        }
-        callback_controller
-            .borrow_mut()
-            .activate_tab(index as usize);
+        };
+        controller.activate_tab(index);
         if let Some(app) = app_weak.upgrade() {
-            refresh_ui(&app, &callback_controller.borrow());
-            close_search_ui(&app, &mut callback_controller.borrow_mut());
+            refresh_ui(&app, &controller);
+            close_search_ui(&app, &mut controller);
         }
     });
 
@@ -485,6 +542,7 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
         } else {
             (controller.active + 1) % controller.sessions.len()
         };
+        controller.scroll_accumulator.reset();
         if let Some(app) = app_weak.upgrade() {
             refresh_ui(&app, &controller);
             close_search_ui(&app, &mut controller);
@@ -510,46 +568,15 @@ fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
         }
     });
 
-    let app_weak = app.as_weak();
     let callback_controller = Rc::clone(&controller);
-    app.on_terminal_scroll(move |x, y, delta, shift, alt, control| {
-        let lines = if delta > 0.0 {
-            3
-        } else if delta < 0.0 {
-            -3
-        } else {
-            0
-        };
-        if lines != 0 {
-            let controller = callback_controller.borrow();
-            if let Some(session) = controller.active_session() {
-                if shift || !session.mouse_reporting() {
-                    session.scroll(lines);
-                } else {
-                    let button = if delta > 0.0 {
-                        MouseButton::WheelUp
-                    } else {
-                        MouseButton::WheelDown
-                    };
-                    let result = session.mouse_event(
-                        button,
-                        MousePhase::Press,
-                        coordinate_to_cell(x, controller.config.cell_width),
-                        coordinate_to_cell(y, controller.config.cell_height),
-                        MouseModifiers {
-                            shift,
-                            alt,
-                            control,
-                        },
-                    );
-                    if let Err(error) = result {
-                        warn!(%error, "failed to report terminal mouse wheel");
-                        if let Some(app) = app_weak.upgrade() {
-                            show_error(&app, format!("Could not send mouse input: {error:#}"));
-                        }
-                    }
-                }
-            }
+    app.on_terminal_scroll(move |delta| {
+        let mut controller = callback_controller.borrow_mut();
+        let lines = controller.scroll_accumulator.push(delta);
+        if lines == 0 {
+            return;
+        }
+        if let Some(session) = controller.active_session() {
+            session.scroll(lines);
         }
     });
 
@@ -864,4 +891,34 @@ fn coordinate_to_cell(coordinate: f32, cell_extent: f32) -> u16 {
     (coordinate.max(0.0) / cell_extent)
         .floor()
         .clamp(0.0, f32::from(u16::MAX)) as u16
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScrollAccumulator;
+
+    #[test]
+    fn accumulates_touchpad_deltas_into_lines() {
+        let mut accumulator = ScrollAccumulator::default();
+        assert_eq!(accumulator.push(15.0), 0);
+        assert_eq!(accumulator.push(25.0), 1);
+        assert_eq!(accumulator.push(120.0), 3);
+    }
+
+    #[test]
+    fn reverses_direction_without_losing_the_fractional_delta() {
+        let mut accumulator = ScrollAccumulator::default();
+        assert_eq!(accumulator.push(20.0), 0);
+        assert_eq!(accumulator.push(-40.0), 0);
+        assert_eq!(accumulator.push(-20.0), -1);
+    }
+
+    #[test]
+    fn reset_discards_partial_scroll_input() {
+        let mut accumulator = ScrollAccumulator::default();
+        assert_eq!(accumulator.push(30.0), 0);
+        accumulator.reset();
+        assert_eq!(accumulator.push(20.0), 0);
+        assert_eq!(accumulator.push(20.0), 1);
+    }
 }

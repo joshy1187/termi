@@ -48,8 +48,8 @@ modes. Termi adds replies for primary/secondary device attributes, operating
 status, cursor position, and text-area size queries.
 
 Mouse events use the active X10/VT200/button-motion/any-motion mode and default,
-UTF-8, or SGR encoding. Holding Shift bypasses application mouse capture for
-local selection and history scrolling.
+UTF-8, or SGR encoding. Wheel and touchpad gestures always scroll local history;
+other pointer input remains available to applications that capture the mouse.
 
 OSC title and directory values are bounded and normalized as display metadata.
 OSC 7 never selects a local directory for a new process. New tabs resolve the

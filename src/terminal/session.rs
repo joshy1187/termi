@@ -38,8 +38,6 @@ pub enum MouseButton {
     Left,
     Middle,
     Right,
-    WheelUp,
-    WheelDown,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -642,9 +640,7 @@ impl TerminalSession {
         let mut pressed = self.pressed_mouse_button.lock();
         let effective_button = match phase {
             MousePhase::Press => {
-                if !matches!(button, MouseButton::WheelUp | MouseButton::WheelDown) {
-                    *pressed = Some(button);
-                }
+                *pressed = Some(button);
                 Some(button)
             }
             MousePhase::Release => {
@@ -960,8 +956,6 @@ fn encode_mouse_event(
         Some(MouseButton::Left) => 0_u16,
         Some(MouseButton::Middle) => 1,
         Some(MouseButton::Right) => 2,
-        Some(MouseButton::WheelUp) => 64,
-        Some(MouseButton::WheelDown) => 65,
         None => 3,
     };
     if phase == MousePhase::Release && encoding != MouseProtocolEncoding::Sgr {
