@@ -64,6 +64,12 @@ WINIT_UNIX_BACKEND=x11 cargo run --locked
 - Launch from a terminal and from the installed desktop entry.
 - Confirm the app ID/class groups correctly in the desktop shell.
 - Drag, resize, maximize, restore, minimize, and close the frameless window.
+- After every window drag, immediately exercise minimize, maximize/restore,
+  close, tab activation, tab close, and new-tab controls; none may retain a
+  stale pressed state or stop receiving clicks.
+- Confirm only the inset 400-pixel region on the title bar's right side moves
+  the window, double-clicking it toggles maximize, and the surrounding top and
+  right resize borders still resize normally.
 - Resize rapidly and confirm the reported rows/columns and full-screen
   applications follow without crashes or stale geometry.
 - Confirm an invalid config fails before opening a window and reports its path.

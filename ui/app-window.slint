@@ -139,8 +139,11 @@ export component AppWindow inherits Window {
 
     out property <float> terminal-viewport-width: terminal-focus.width / 1px;
     out property <float> terminal-viewport-height: terminal-focus.height / 1px;
+    out property <length> title-drag-x: root.width - 408px;
+    out property <length> title-drag-y: 8px;
+    out property <length> title-drag-width: 400px;
+    out property <length> title-drag-height: 36px;
 
-    callback start-window-drag;
     callback minimize-window;
     callback toggle-maximize-window;
     callback close-window;
@@ -214,16 +217,12 @@ export component AppWindow inherits Window {
             background: #0a0b12d4;
             border-width: 0px;
 
-            title-drag := TouchArea {
-                x: 92px;
-                width: parent.width - 92px;
-                height: 100%;
-                pointer-event(event) => {
-                    if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
-                        root.start-window-drag();
-                    }
-                }
-                double-clicked => { root.toggle-maximize-window(); }
+            Rectangle {
+                x: root.title-drag-x;
+                y: root.title-drag-y;
+                width: root.title-drag-width;
+                height: root.title-drag-height;
+                background: transparent;
             }
 
             Text {
