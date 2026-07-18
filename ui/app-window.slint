@@ -22,26 +22,23 @@ export struct TabData {
     exited: bool,
 }
 
-component TrafficLight inherits Rectangle {
-    in property <color> normal-color;
-    in property <color> hover-color;
-    in property <string> symbol;
+component WindowControlButton inherits Rectangle {
+    in property <image> icon;
+    in property <color> tint;
     callback activated;
 
-    width: 13px;
-    height: 13px;
-    border-radius: 7px;
-    background: hit.has-hover ? root.hover-color : root.normal-color;
-    border-width: 1px;
-    border-color: #00000055;
+    width: 28px;
+    height: 24px;
+    border-radius: 6px;
+    background: hit.pressed ? #2a3142 : hit.has-hover ? #222938 : transparent;
 
-    Text {
-        text: hit.has-hover ? root.symbol : "";
-        color: #17191f9a;
-        font-size: 9px;
-        font-weight: 800;
-        horizontal-alignment: center;
-        vertical-alignment: center;
+    Image {
+        source: root.icon;
+        colorize: root.tint;
+        width: 15px;
+        height: 15px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
     }
 
     hit := TouchArea {
@@ -144,13 +141,16 @@ export component AppWindow inherits Window {
     out property <float> terminal-viewport-height: terminal-focus.height / 1px;
 
     callback start-window-drag;
+    callback minimize-window;
+    callback toggle-maximize-window;
+    callback close-window;
     callback new-tab;
     callback close-tab(int);
     callback activate-tab(int);
     callback next-tab(bool);
     callback close-active-tab;
     callback terminal-key(string, bool, bool, bool, bool);
-    callback terminal-scroll(float, float, float, bool, bool, bool);
+    callback terminal-scroll(float);
     callback terminal-pointer(float, float, int, int, bool, bool, bool);
     callback copy-request;
     callback paste-request;
@@ -192,8 +192,8 @@ export component AppWindow inherits Window {
 
     Image {
         source: @image-url("../assets/backgrounds/galactic.png");
-        width: 100%;
-        height: 100%;
+        width: root.width;
+        height: root.height;
         image-fit: cover;
         image-rendering: smooth;
     }
@@ -210,19 +210,20 @@ export component AppWindow inherits Window {
         spacing: 0px;
 
         title-bar := Rectangle {
-            height: 38px;
+            height: 44px;
             background: #0a0b12d4;
             border-width: 0px;
 
             title-drag := TouchArea {
-                width: 100%;
+                x: 92px;
+                width: parent.width - 92px;
                 height: 100%;
                 pointer-event(event) => {
                     if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
                         root.start-window-drag();
                     }
                 }
-                double-clicked => { root.maximized = !root.maximized; }
+                double-clicked => { root.toggle-maximize-window(); }
             }
 
             Text {
@@ -238,32 +239,26 @@ export component AppWindow inherits Window {
                 vertical-alignment: center;
             }
 
-            HorizontalLayout {
-                x: 16px;
-                y: 0px;
-                width: 55px;
-                height: 100%;
-                spacing: 8px;
-                alignment: center;
-
-                TrafficLight {
-                    normal-color: #ff5f57;
-                    hover-color: #ff7770;
-                    symbol: "×";
-                    activated => { root.close(); }
-                }
-                TrafficLight {
-                    normal-color: #febc2e;
-                    hover-color: #ffd15c;
-                    symbol: "−";
-                    activated => { root.minimized = true; }
-                }
-                TrafficLight {
-                    normal-color: #28c840;
-                    hover-color: #50dc63;
-                    symbol: root.maximized ? "−" : "+";
-                    activated => { root.maximized = !root.maximized; }
-                }
+            WindowControlButton {
+                x: 8px;
+                y: 12px;
+                icon: @image-url("../assets/icons/window-minimize.svg");
+                tint: #a55cff;
+                activated => { root.minimize-window(); }
+            }
+            WindowControlButton {
+                x: 36px;
+                y: 12px;
+                icon: @image-url("../assets/icons/window-maximize.svg");
+                tint: #4fa7ff;
+                activated => { root.toggle-maximize-window(); }
+            }
+            WindowControlButton {
+                x: 64px;
+                y: 12px;
+                icon: @image-url("../assets/icons/window-close.svg");
+                tint: #ff5f57;
+                activated => { root.close-window(); }
             }
         }
 
@@ -296,18 +291,19 @@ export component AppWindow inherits Window {
                     background: #4a536677;
                 }
 
-                for tab[index] in root.tabs : Rectangle {
-                    width: min(230px, max(150px, (parent.width - 360px) / max(1, root.tabs.length)));
-                    height: 36px;
-                    border-radius: 10px;
-                    background: tab.active ? #2a2939db : tab-hit.has-hover ? #31324269 : #282a3433;
-                    border-width: 1px;
-                    border-color: tab.active ? #687591aa : #323a4b66;
+        for tab in root.tabs : Rectangle {
+            width: min(230px, max(150px, (parent.width - 360px) / max(1, root.tabs.length)));
+            height: 36px;
+            border-radius: 10px;
+            background: tab.active ? #2a2939db : tab-hit.has-hover ? #31324269 : #282a3433;
+            border-width: 1px;
+            border-color: tab.active ? #687591aa : #323a4b66;
 
-                    tab-hit := TouchArea {
-                        mouse-cursor: pointer;
-                        clicked => { root.activate-tab(index); terminal-focus.focus(); }
-                    }
+            tab-hit := TouchArea {
+                mouse-cursor: pointer;
+                width: parent.width - 32px;
+                clicked => { root.activate-tab(tab.id); terminal-focus.focus(); }
+            }
 
                     HorizontalLayout {
                         padding-left: 12px;
@@ -347,7 +343,7 @@ export component AppWindow inherits Window {
 
                             close-hit := TouchArea {
                                 mouse-cursor: pointer;
-                                clicked => { root.close-tab(index); }
+                                clicked => { root.close-tab(tab.id); }
                             }
                         }
                     }
@@ -563,14 +559,7 @@ export component AppWindow inherits Window {
                         }
 
                         scroll-event(event) => {
-                            root.terminal-scroll(
-                                terminal-touch.mouse-x / 1px,
-                                terminal-touch.mouse-y / 1px,
-                                event.delta-y / 1px,
-                                event.modifiers.shift,
-                                event.modifiers.alt,
-                                event.modifiers.control
-                            );
+                            root.terminal-scroll(event.delta-y / 1px);
                             accept
                         }
                     }

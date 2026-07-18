@@ -26,6 +26,15 @@ All notable changes to Termi are documented here. The project follows
 
 ### Changed
 
+- Replaced clipped circular stoplights with Texti-style native minimize, maximize,
+  and close controls; their title-bar hit targets now have explicit top padding.
+- Made the galactic background more visible for new configurations while keeping
+  aspect-ratio cover scaling.
+- Made mouse-wheel and touchpad gestures always scroll local history, with
+  fractional-delta accumulation for smooth trackpad input.
+- Made clipboard creation lazy and retryable when a desktop clipboard appears
+  after Termi starts.
+
 - Stopped modifier-key state events from being written into terminal input,
   fixing password and other text containing uppercase characters or symbols.
 - Left-button drags now always select and highlight terminal text, including

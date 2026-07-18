@@ -45,8 +45,8 @@ impl Default for AppConfig {
             scrollback_lines: 10_000,
             initial_columns: 100,
             initial_rows: 32,
-            background_dim: 0.48,
-            terminal_opacity: 0.78,
+            background_dim: 0.34,
+            terminal_opacity: 0.72,
         }
     }
 }

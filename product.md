@@ -88,21 +88,26 @@ commitment unless a release note explicitly expands it.
 - Filters standalone Shift, Control, Alt/AltGr, Meta, and Caps Lock state
   events before the PTY write path, preserving the exact bytes of capitalized
   and symbol-containing input at hidden password prompts.
-- Uses a bundled galactic PNG and a frameless Slint surface with draggable,
-  minimizable, maximizable, resizable desktop chrome.
+- Uses a bundled galactic PNG as an aspect-ratio cover background, with balanced
+  default dimming and terminal translucency so the artwork remains visible.
+- Uses a frameless Slint surface with draggable, resizable desktop chrome and
+  Texti-style icon controls for native minimize, maximize, and close actions.
 
 ### History, selection, and clipboard
 
 - Keeps up to 100,000 configured scrollback lines per tab; the default is
   10,000.
-- Scrolls locally when application mouse capture is off or Shift is held.
+- Always scrolls local history with mouse-wheel and touchpad input, including
+  when a full-screen application has mouse reporting enabled. Fine-grained
+  touchpad deltas accumulate into whole history lines without three-line jumps.
 - Searches history forward and backward on a coalescing background worker and
   highlights the current match.
 - Selects and highlights visible terminal text with a left-button pointer drag,
   including while a full-screen application has mouse reporting enabled, and
   copies either the selection or visible screen through the desktop clipboard.
 - Supports native Wayland data-control clipboard integration and X11/XWayland
-  paths exposed by `arboard`.
+  paths exposed by `arboard`; clipboard access retries when a backend becomes
+  available after startup.
 - Pastes one safe line directly. Multiline input or input from which controls
   were removed requires explicit confirmation. Bracketed-paste markers are
   used only when the active application requested them.
@@ -115,9 +120,9 @@ commitment unless a release note explicitly expands it.
 
 - Handles X10 press, VT200 press/release, button-motion, and any-motion modes.
 - Encodes default, UTF-8, and SGR coordinate formats.
-- Sends wheel events to a capturing terminal application and uses Shift as a
-  local-history override. Left-button drags remain local selection so text can
-  always be highlighted and copied.
+- Keeps wheel and touchpad events local to scrollback, even when an application
+  captures other mouse events. Left-button drags remain local selection so text
+  can always be highlighted and copied.
 - Tracks pressed buttons per session and clears tracking when local selection
   takes over.
 
@@ -131,7 +136,9 @@ commitment unless a release note explicitly expands it.
 - Creates a new configuration atomically with user-only file permissions on
   Unix and syncs the containing directory.
 - Configures shell, font family and size, cell geometry, scrollback, initial
-  grid, background dimming, and terminal surface opacity.
+  grid, background dimming, and terminal surface opacity. New configurations
+  default to `background_dim = 0.34` and `terminal_opacity = 0.72`; existing
+  configurations retain their chosen values.
 - Provides `--version`, `--help`, `--print-config-path`, and `--check-config`
   commands that do not open a GUI.
 - Supports filtered diagnostic logs through `RUST_LOG`.

@@ -128,8 +128,8 @@ cell_height = 20.0
 scrollback_lines = 10000
 initial_columns = 100
 initial_rows = 32
-background_dim = 0.48
-terminal_opacity = 0.78
+background_dim = 0.34
+terminal_opacity = 0.72
 ```
 
 Configuration is size-limited, strictly parsed, validated before the window
@@ -146,7 +146,7 @@ silently change behavior. Restart Termi after editing it.
 | `Ctrl+Shift+C` | Copy the selection, or the visible screen if none |
 | `Ctrl+Shift+V` | Paste; multiline or cleaned input requires confirmation |
 | `Ctrl+Shift+F` | Search scrollback |
-| Mouse wheel / touchpad | Scroll history |
+| Mouse wheel / touchpad | Always scroll local terminal history |
 | Left-button drag | Select and highlight text, including when an application has mouse capture |
 | Middle click | Paste when application mouse capture is off |
 | Right click | Open the Copy/Paste menu; paste retains its safety confirmation when needed |
