@@ -26,6 +26,9 @@ All notable changes to Termi are documented here. The project follows
 
 ### Changed
 
+- Restricted window movement to a 400-pixel safe title-bar region and moved
+  drag initiation to the raw winit event path, keeping window controls and tab
+  actions responsive immediately after moving the frameless window.
 - Replaced clipped circular stoplights with Texti-style native minimize, maximize,
   and close controls; their title-bar hit targets now have explicit top padding.
 - Made the galactic background more visible for new configurations while keeping

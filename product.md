@@ -9,7 +9,7 @@ systems:
   - ubuntu-24.04-x86_64
   - wayland
   - x11
-updated_at: 2026-07-16
+updated_at: 2026-07-18
 ---
 
 # Termi product specification
@@ -58,6 +58,30 @@ Snap, and containerized desktop delivery are outside the version 1 support
 commitment unless a release note explicitly expands it.
 
 ## User-visible capabilities
+
+### Window interaction
+
+- Uses a frameless 44-pixel title bar above the existing 54-pixel tab and
+  navigation toolbar; the two-row visual layout remains stable while window
+  movement and application controls use separate pointer paths.
+- Provides native minimize, maximize/restore, and close actions through the
+  custom left-side title-bar controls. Those controls remain ordinary Slint
+  hit targets and are never covered by the window drag region.
+- Reserves a dedicated 400-logical-pixel window-move target on the title bar's
+  right side, inset eight logical pixels from the top and right window edges.
+  The inset preserves the frameless window's resize targets.
+- Starts native window movement from the raw winit mouse-press event and
+  consumes the initiating press before Slint can retain pointer capture. The
+  native window manager owns the remainder of that move sequence, so moving a
+  window leaves the title controls, tabs, tab-close buttons, new-tab button,
+  directory display, and application menu immediately usable.
+- Double-clicking the dedicated move target toggles maximized state. Presses
+  outside that target propagate normally and cannot begin a window move.
+- Keeps tab activation, tab closing, and new-tab creation in the separate
+  toolbar below the title bar, outside the draggable area.
+- Tracks only the latest logical cursor position and a bounded double-click
+  timestamp/coordinate pair. Window-drag handling is event-driven and adds no
+  polling timer, worker, or per-frame rendering work.
 
 ### Sessions and tabs
 

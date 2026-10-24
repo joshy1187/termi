@@ -7,13 +7,16 @@ use std::{
         mpsc::{Receiver, Sender, channel},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, ensure};
 use slint::{
     Color, ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel,
-    winit_030::WinitWindowAccessor,
+    winit_030::{
+        EventResult, WinitWindowAccessor,
+        winit::event::{ElementState, MouseButton as WinitMouseButton, WindowEvent},
+    },
 };
 use tracing::{debug, error, warn};
 
@@ -29,6 +32,40 @@ use crate::{
 const MAX_TABS: usize = 32;
 const XDG_APP_ID: &str = "ai.clairos.termi";
 const SCROLL_PIXELS_PER_LINE: f32 = 40.0;
+const TITLE_DOUBLE_CLICK_TIMEOUT_MS: u64 = 500;
+const TITLE_DOUBLE_CLICK_DISTANCE_PX: f32 = 5.0;
+
+#[derive(Default)]
+struct TitleClickTracker {
+    last: Option<Instant>,
+    x: f32,
+    y: f32,
+}
+
+impl TitleClickTracker {
+    fn record(&mut self, x: f32, y: f32) -> bool {
+        let now = Instant::now();
+        let double_click = self.last.is_some_and(|last| {
+            now.saturating_duration_since(last)
+                <= Duration::from_millis(TITLE_DOUBLE_CLICK_TIMEOUT_MS)
+                && (x - self.x).abs() <= TITLE_DOUBLE_CLICK_DISTANCE_PX
+                && (y - self.y).abs() <= TITLE_DOUBLE_CLICK_DISTANCE_PX
+        });
+
+        if double_click {
+            self.reset();
+        } else {
+            self.last = Some(now);
+            self.x = x;
+            self.y = y;
+        }
+        double_click
+    }
+
+    fn reset(&mut self) {
+        self.last = None;
+    }
+}
 
 #[derive(Debug, Default)]
 struct ScrollAccumulator {
@@ -416,13 +453,54 @@ fn apply_config(app: &AppWindow, config: &AppConfig) {
 
 fn install_callbacks(app: &AppWindow, controller: Rc<RefCell<Controller>>) {
     let app_weak = app.as_weak();
-    app.on_start_window_drag(move || {
-        if let Some(app) = app_weak.upgrade() {
-            app.window().with_winit_window(|window| {
-                if let Err(error) = window.drag_window() {
-                    debug!(%error, "window manager rejected drag request");
+    let cursor_position = Rc::new(RefCell::new(None::<(f64, f64)>));
+    let title_clicks = Rc::new(RefCell::new(TitleClickTracker::default()));
+    app.window().on_winit_window_event({
+        let cursor_position = Rc::clone(&cursor_position);
+        let title_clicks = Rc::clone(&title_clicks);
+        move |window, event| {
+            let Some(app) = app_weak.upgrade() else {
+                return EventResult::Propagate;
+            };
+
+            match event {
+                WindowEvent::CursorMoved { position, .. } => {
+                    let position = position.to_logical::<f64>(f64::from(window.scale_factor()));
+                    *cursor_position.borrow_mut() = Some((position.x, position.y));
+                    EventResult::Propagate
                 }
-            });
+                WindowEvent::MouseInput {
+                    state: ElementState::Pressed,
+                    button: WinitMouseButton::Left,
+                    ..
+                } => {
+                    let Some((x, y)) = *cursor_position.borrow() else {
+                        return EventResult::Propagate;
+                    };
+                    let in_title_drag_region = can_start_window_drag_at(&app, x, y);
+                    if !in_title_drag_region {
+                        title_clicks.borrow_mut().reset();
+                        return EventResult::Propagate;
+                    }
+
+                    if title_clicks.borrow_mut().record(x as f32, y as f32) {
+                        let maximized = app.window().is_maximized();
+                        app.window().set_maximized(!maximized);
+                    } else {
+                        match window.with_winit_window(|window| window.drag_window()) {
+                            Some(Ok(())) => {}
+                            Some(Err(error)) => {
+                                debug!(%error, "window manager rejected drag request");
+                            }
+                            None => {
+                                debug!("winit window unavailable for native drag request");
+                            }
+                        }
+                    }
+                    EventResult::PreventDefault
+                }
+                _ => EventResult::Propagate,
+            }
         }
     });
 
@@ -893,9 +971,50 @@ fn coordinate_to_cell(coordinate: f32, cell_extent: f32) -> u16 {
         .clamp(0.0, f32::from(u16::MAX)) as u16
 }
 
+fn can_start_window_drag_at(app: &AppWindow, x: f64, y: f64) -> bool {
+    point_in_rect(
+        x,
+        y,
+        f64::from(app.get_title_drag_x()),
+        f64::from(app.get_title_drag_y()),
+        f64::from(app.get_title_drag_width()),
+        f64::from(app.get_title_drag_height()),
+    )
+}
+
+fn point_in_rect(x: f64, y: f64, left: f64, top: f64, width: f64, height: f64) -> bool {
+    x >= left && x < left + width && y >= top && y < top + height
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ScrollAccumulator;
+    use super::{ScrollAccumulator, TitleClickTracker, point_in_rect};
+
+    #[test]
+    fn custom_title_drag_region_excludes_controls_resize_border_and_tabs() {
+        let left = 832.0;
+        let top = 8.0;
+        let width = 400.0;
+        let height = 36.0;
+
+        assert!(point_in_rect(832.0, 8.0, left, top, width, height));
+        assert!(point_in_rect(1231.9, 43.9, left, top, width, height));
+        assert!(!point_in_rect(20.0, 22.0, left, top, width, height));
+        assert!(!point_in_rect(831.9, 22.0, left, top, width, height));
+        assert!(!point_in_rect(1000.0, 7.9, left, top, width, height));
+        assert!(!point_in_rect(1232.0, 22.0, left, top, width, height));
+        assert!(!point_in_rect(1000.0, 44.0, left, top, width, height));
+    }
+
+    #[test]
+    fn title_double_click_requires_two_nearby_presses() {
+        let mut tracker = TitleClickTracker::default();
+
+        assert!(!tracker.record(900.0, 22.0));
+        assert!(tracker.record(902.0, 24.0));
+        assert!(!tracker.record(900.0, 22.0));
+        assert!(!tracker.record(906.0, 22.0));
+    }
 
     #[test]
     fn accumulates_touchpad_deltas_into_lines() {
